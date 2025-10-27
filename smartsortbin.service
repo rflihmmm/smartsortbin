@@ -1,0 +1,15 @@
+[Unit]
+Description=Smart Sort Bin Object Detection Service
+After=graphical.target
+
+[Service]
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/smartsortbin
+ExecStart=/home/pi/virtualenv/bin/python -u /home/pi/smartsortbin/main.py
+Restart=always
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+
+[Install]
+WantedBy=graphical.target
