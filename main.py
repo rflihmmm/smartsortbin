@@ -11,7 +11,7 @@ SERIAL_PORT = '/dev/ttyACM0'
 BAUD_RATE = 9600
 MODEL_PATH = 'best.pt' # Menggunakan model nano yang lebih ringan untuk performa lebih baik
 CLASS_NAMES = ['organik', 'nonorganik', 'campuran']
-YOLO_INPUT_SIZE = 416 # Ukuran input yang lebih seimbang untuk akurasi dan kecepatan
+YOLO_INPUT_SIZE = 640 # Ukuran input yang lebih seimbang untuk akurasi dan kecepatan
 
 # --- Variabel Global untuk Threading ---
 last_frame = None
@@ -56,15 +56,35 @@ def detection_thread_func(model):
                                 frame_to_process = last_frame.copy()
 
                         if frame_to_process is not None:
-                            results = model.predict(source=frame_to_process, imgsz=YOLO_INPUT_SIZE, show=False, verbose=False, conf=0.5)
+                            results = model.predict(source=frame_to_process, imgsz=YOLO_INPUT_SIZE, show=False, verbose=False, conf=0.25)
                             
-                            annotated_frame_with_boxes = results[0].plot()
+                            detected_classes = []
+                            annotated_frame_with_boxes = frame_to_process.copy() # Mulai dengan frame asli
+
+                            # Proses hasil deteksi
+                            for result in results:
+                                for box in result.boxes.data.tolist():
+                                    x1, y1, x2, y2, score, class_id = box
+                                    
+                                    # Pastikan class_id berada dalam rentang yang valid
+                                    if int(class_id) < len(CLASS_NAMES):
+                                        class_name = CLASS_NAMES[int(class_id)]
+                                        detected_classes.append(class_name)
+                                        
+                                        # Tampilkan hasil deteksi di terminal
+                                        print(f"Objek Terdeteksi: {class_name}, Skor: {score:.2f}")
+                                        
+                                        # Gambar kotak pembatas dan label pada frame
+                                        label = f'{class_name}: {score:.2f}'
+                                        cv2.rectangle(annotated_frame_with_boxes, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                                        cv2.putText(annotated_frame_with_boxes, label, (int(x1), int(y1) - 10),
+                                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
                             with frame_lock:
                                 annotated_frame = annotated_frame_with_boxes
 
                             message_to_send = None 
-                            if results and results[0].boxes:
-                                detected_classes = [CLASS_NAMES[int(cls)] for cls in results[0].boxes.cls]
+                            if detected_classes:
                                 unique_classes = set(detected_classes)
                                 
                                 if 'campuran' in unique_classes or ('organik' in unique_classes and 'nonorganik' in unique_classes):

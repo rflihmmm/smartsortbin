@@ -10,6 +10,7 @@ const char* MSG_TRIGGER_RASPI = "3";
 const char* MSG_ORGANIK = "0";
 const char* MSG_NONORGANIK = "1";
 const char* MSG_CAMPURAN = "2";
+const char* MSG_ERROR = "00";
 
 // --- Konfigurasi Sensor HC-SR04 ---
 const int HCSR_TRIG_PIN = 9;
@@ -104,7 +105,14 @@ void loop() {
       lcd.clear();
       lcd.print("Jenis: Campuran");
       stepsToMove = STEPS_CAMPURAN;
-    } else {
+    } else if (response == MSG_ERROR) {
+      lcd.clear();
+      lcd.print("Jenis: Invalid");
+      delay(500);
+      lcd.clear();
+      lcd.print("Jenis: Campuran");
+      stepsToMove = STEPS_CAMPURAN;
+    }else {
       lcd.clear();
       lcd.print("Pesan Tdk Dikenal");
       delay(2000); // Tampilkan pesan error sejenak
