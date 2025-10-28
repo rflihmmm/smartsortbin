@@ -33,6 +33,62 @@ def camera_thread_func(cap):
             time.sleep(0.5) # Beri jeda jika gagal membaca frame
     print("Camera thread stopped.")
 
+# --- Fungsi untuk Thread 2: Deteksi Objek ---
+def detection_thread_func(model):
+    global ser, last_frame, annotated_frame, running
+
+    print("Mendengarkan trigger dari Arduino...")
+    while running:
+        if ser and ser.in_waiting > 0:
+            try:
+                trigger = ser.readline().decode('utf-8').strip()
+                if trigger == "3":
+                    print("Menerima trigger '3' dari Arduino. Menunggu 2 detik untuk stabilisasi...")
+                    time.sleep(2) # Tunggu 2 detik
+                    
+                    detection_successful = False
+                    while not detection_successful and running:
+                        print("Mencoba melakukan deteksi...")
+                        frame_to_process = None
+                        with frame_lock:
+                            if last_frame is not None:
+                                frame_to_process = last_frame.copy()
+
+                        if frame_to_process is not None:
+                            results = model.predict(source=frame_to_process, imgsz=YOLO_INPUT_SIZE, show=False, verbose=False, conf=0.5)
+                            
+                            annotated_frame_with_boxes = results[0].plot()
+                            with frame_lock:
+                                annotated_frame = annotated_frame_with_boxes
+
+                            message_to_send = None 
+                            if results and results[0].boxes:
+                                detected_classes = [CLASS_NAMES[int(cls)] for cls in results[0].boxes.cls]
+                                unique_classes = set(detected_classes)
+                                
+                                if 'campuran' in unique_classes or ('organik' in unique_classes and 'nonorganik' in unique_classes):
+                                    message_to_send = "2"
+                                elif 'organik' in unique_classes:
+                                    message_to_send = "0"
+                                elif 'nonorganik' in unique_classes:
+                                    message_to_send = "1"
+                            
+                            if message_to_send:
+                                print(f"Mengirim pesan ke Arduino: {message_to_send}")
+                                ser.write(message_to_send.encode())
+                                ser.flush()
+                                detection_successful = True
+                            else:
+                                print("Tidak ada objek valid yang terdeteksi. Mencoba lagi dalam 2 detik...")
+                                time.sleep(2)
+                        else:
+                            print("Tidak ada frame yang tersedia. Mencoba lagi...")
+                            time.sleep(1)
+            except Exception as e:
+                print(f"Error dalam thread deteksi: {e}")
+        else:
+            time.sleep(0.05) # Cegah CPU usage tinggi saat tidak ada data serial
+
 # --- Fungsi Utama ---
 def main():
     global ser, running, last_frame, annotated_frame
@@ -60,93 +116,41 @@ def main():
 
     # Buat dan mulai threads
     cam_thread = threading.Thread(target=camera_thread_func, args=(cap,))
+    detection_thread = threading.Thread(target=detection_thread_func, args=(model,))
     
     cam_thread.start()
+    detection_thread.start()
 
-    print("Program berjalan. Memantau kamera secara realtime...")
+    print("Program berjalan. Menampilkan umpan kamera...")
 
     try:
         while running:
-            frame_to_process = None
-            with frame_lock:
-                if last_frame is None:
-                    time.sleep(0.01) # Tunggu sebentar jika belum ada frame
-                    continue
-                frame_to_process = last_frame.copy()
-
-            # --- Logika Deteksi Realtime ---
-            results = model.predict(source=frame_to_process, imgsz=YOLO_INPUT_SIZE, show=False, verbose=False, conf=0.5)
-            
-            # Gambar bounding box pada frame hasil deteksi
-            annotated_frame_with_boxes = results[0].plot()
-            with frame_lock:
-                annotated_frame = annotated_frame_with_boxes
-
-            message_to_send = None # Pesan default, tidak ada yang dikirim
-
-            if results and results[0].boxes:
-                detected_objects = results[0].boxes.data.tolist()
-                
-                if detected_objects:
-                    detected_classes = []
-                    for obj in detected_objects:
-                        conf = obj[4]
-                        class_id = int(obj[5])
-                        if class_id < len(CLASS_NAMES):
-                            class_name = CLASS_NAMES[class_id]
-                            detected_classes.append(class_name)
-
-                    unique_classes = set(detected_classes)
-                    final_class_name = None
-
-                    if 'campuran' in unique_classes:
-                        final_class_name = 'campuran'
-                    elif 'organik' in unique_classes and 'nonorganik' in unique_classes:
-                        final_class_name = 'campuran'
-                    elif 'organik' in unique_classes:
-                        final_class_name = 'organik'
-                    elif 'nonorganik' in unique_classes:
-                        final_class_name = 'nonorganik'
-                    
-                    # Hanya kirim pesan jika deteksi valid (bukan campuran/tidak ada)
-                    if final_class_name == 'organik':
-                        message_to_send = "0"
-                    elif final_class_name == 'nonorganik':
-                        message_to_send = "1"
-            
-            # Kirim hasil ke Arduino hanya jika ada pesan yang valid
-            if ser and message_to_send:
-                try:
-                    print(f"Mengirim pesan ke Arduino: {message_to_send}")
-                    ser.write(message_to_send.encode())
-                    ser.flush()
-                except serial.SerialException as e:
-                    print(f"Error saat mengirim ke serial: {e}")
->>>>>>>
-            # Jika tidak ada deteksi yang valid, loop akan berlanjut (deteksi ulang)
-            # tanpa mengirim pesan apapun.
-
-            # Tampilkan frame dari kamera untuk visualisasi
             display_frame = None
             with frame_lock:
-                # Always display the annotated frame if available, otherwise the raw frame
+                # Prioritaskan menampilkan frame yang sudah diannotasi jika ada
                 if annotated_frame is not None:
                     display_frame = annotated_frame
+                # Jika tidak, tampilkan frame mentah dari kamera
                 elif last_frame is not None:
                     display_frame = last_frame
             
             if display_frame is not None:
                 cv2.imshow('Realtime Camera Feed', display_frame)
             
+            # Keluar dari loop jika 'q' ditekan
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 running = False
                 break
-    
+            
+            # Beri sedikit jeda agar tidak membebani CPU
+            time.sleep(0.01)
+
     finally:
         # Cleanup
         print("Menghentikan program...")
         running = False
         cam_thread.join()
+        detection_thread.join()
         
         cap.release()
         cv2.destroyAllWindows()
