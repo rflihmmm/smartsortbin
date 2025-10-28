@@ -46,9 +46,10 @@ def detection_thread_func(model):
                     print("Menerima trigger '3' dari Arduino. Menunggu 2 detik untuk stabilisasi...")
                     time.sleep(2) # Tunggu 2 detik
                     
+                    retry_count = 0
                     detection_successful = False
-                    while not detection_successful and running:
-                        print("Mencoba melakukan deteksi...")
+                    while retry_count < 2 and not detection_successful and running:
+                        print(f"Mencoba melakukan deteksi... (Percobaan ke-{retry_count + 1})")
                         frame_to_process = None
                         with frame_lock:
                             if last_frame is not None:
@@ -79,11 +80,19 @@ def detection_thread_func(model):
                                 ser.flush()
                                 detection_successful = True
                             else:
-                                print("Tidak ada objek valid yang terdeteksi. Mencoba lagi dalam 2 detik...")
-                                time.sleep(2)
+                                print("Tidak ada objek valid yang terdeteksi.")
+                                retry_count += 1
+                                if retry_count < 2:
+                                    print("Mencoba lagi dalam 2 detik...")
+                                    time.sleep(2)
                         else:
                             print("Tidak ada frame yang tersedia. Mencoba lagi...")
                             time.sleep(1)
+                    
+                    if not detection_successful:
+                        print("Deteksi gagal setelah 2 kali percobaan. Mengirim '00' ke Arduino.")
+                        ser.write("00".encode())
+                        ser.flush()
             except Exception as e:
                 print(f"Error dalam thread deteksi: {e}")
         else:
