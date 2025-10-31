@@ -99,7 +99,7 @@ void loop() {
       stepsToMove = STEPS_ORGANIK;
     } else if (response == MSG_NONORGANIK) {
       lcd.clear();
-      lcd.print("Jenis: Anorganik");
+      lcd.print("Jenis: Nonorganik");
       stepsToMove = STEPS_NONORGANIK;
     } else if (response == MSG_CAMPURAN) {
       lcd.clear();

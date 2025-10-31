@@ -46,8 +46,8 @@ while True:
                 # Gambar kotak pembatas dan label pada frame
                 label = f'{class_name}: {score:.2f}'
                 cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                cv2.putText(frame, label, (int(x1), int(y1) - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                cv2.putText(frame, label, (int(x1) + 4, int(y1) + 13),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
     # Tampilkan frame hasil deteksi di jendela
     cv2.imshow('Deteksi Langsung - Tekan q untuk keluar', frame)
